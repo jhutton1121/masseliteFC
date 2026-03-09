@@ -1,0 +1,23 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "masselitefc-queue-consumer",
+  "main": "index.ts",
+  "compatibility_date": "2026-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "queues": {
+    "consumers": [
+      {
+        "queue": "masselitefc-notifications",
+        "max_batch_size": 10,
+        "max_retries": 3,
+        "dead_letter_queue": "masselitefc-notifications-dlq"
+      }
+    ]
+  }
+
+  // Secrets (set via `wrangler secret put`):
+  // RESEND_API_KEY
+  // WHATSAPP_TOKEN
+  // WHATSAPP_PHONE_ID
+}

@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp.*
+.yarn/
+
+# Build
+build/
+dist/
+.react-router/
+
+# Environment
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Cloudflare
+.wrangler/
+.mf/
+
+# Claude Code
+.claude/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+
+# Generated types
+worker-configuration.d.ts

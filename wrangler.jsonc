@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "masselitefc",
+  "compatibility_date": "2026-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "./workers/app.ts",
+
+  // D1 Database
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "masselitefc-db",
+      "database_id": "e0f5e9d7-4873-444a-9d1b-02e33619ab4a",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // R2 Storage (profile pictures)
+  "r2_buckets": [
+    {
+      "binding": "AVATARS",
+      "bucket_name": "masselitefc-avatars"
+    }
+  ],
+
+  // Queue (notifications)
+  "queues": {
+    "producers": [
+      {
+        "binding": "NOTIFICATION_QUEUE",
+        "queue": "masselitefc-notifications"
+      }
+    ]
+  },
+
+  // Cron trigger: check for games tomorrow, send reminders
+  "triggers": {
+    "crons": ["0 */1 * * *"]
+  },
+
+  // Environment variables (secrets set via `wrangler secret put`)
+  "vars": {
+    "APP_URL": "https://masselitefc.com",
+    "WHATSAPP_PHONE_ID": ""
+  }
+}
