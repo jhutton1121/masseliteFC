@@ -27,7 +27,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const nextGame = await db
     .prepare(
       `SELECT g.*, f.name as field_name, f.address as field_address,
-              (SELECT COUNT(*) FROM rsvps WHERE game_id = g.id AND status IN ('in', 'late')) as rsvp_count
+              (SELECT COUNT(*) + COALESCE(SUM(extra_players), 0) FROM rsvps WHERE game_id = g.id AND status IN ('in', 'late')) as rsvp_count
        FROM games g
        JOIN fields f ON g.field_id = f.id
        WHERE g.status = 'scheduled' AND g.date >= date('now')
