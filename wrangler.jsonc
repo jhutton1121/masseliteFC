@@ -5,6 +5,11 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "./workers/app.ts",
 
+  // Custom domain
+  "routes": [
+    { "pattern": "masselitefc.com", "custom_domain": true }
+  ],
+
   // D1 Database
   "d1_databases": [
     {
