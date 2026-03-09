@@ -20,7 +20,7 @@ Pickup soccer scheduling and performance analytics for [masselitefc.com](https:/
 - Core app is live at [masselitefc.com](https://masselitefc.com)
 - Auth, games, RSVPs, team builder, stats, awards, and profiles are all functional
 - Notification queue consumer is deployed but email/WhatsApp sending requires API keys to be configured
-- ~500 users, max capacity ~1000
+- Max user capacity ~1000
 
 ## Tech Stack
 
