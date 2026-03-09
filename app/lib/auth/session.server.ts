@@ -34,7 +34,7 @@ export async function getSessionUser(
       `SELECT u.id, u.name, u.email, u.whatsapp, u.avatar_key, u.role,
               u.positions, u.notify_email, u.notify_whatsapp,
               u.notify_game_reminder, u.notify_schedule_change, u.notify_stats_posted,
-              u.created_at, u.updated_at
+              u.can_write_recaps, u.created_at, u.updated_at
        FROM sessions s
        JOIN users u ON s.user_id = u.id
        WHERE s.id = ? AND s.expires_at > datetime('now')`
@@ -52,6 +52,7 @@ export async function getSessionUser(
     notify_game_reminder: Boolean(row.notify_game_reminder),
     notify_schedule_change: Boolean(row.notify_schedule_change),
     notify_stats_posted: Boolean(row.notify_stats_posted),
+    can_write_recaps: Boolean(row.can_write_recaps),
   } as User;
 }
 

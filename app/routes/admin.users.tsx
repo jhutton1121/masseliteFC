@@ -1,4 +1,4 @@
-import { Form, useActionData } from "react-router";
+import { Form, useActionData, useFetcher } from "react-router";
 import type { Route } from "./+types/admin.users";
 import { requireAdmin } from "~/lib/middleware.server";
 import { isSuperadmin } from "~/utils/roles";
@@ -18,6 +18,9 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import Alert from "@mui/material/Alert";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 
 export function meta() {
   return [{ title: "Users | Admin | MassEliteFC" }];
@@ -44,7 +47,24 @@ export async function action({ request, context }: Route.ActionArgs) {
   const db = context.cloudflare.env.DB;
   const user = await requireAdmin(request, db);
   const form = await request.formData();
+  const intent = form.get("intent") as string;
   const targetId = form.get("user_id") as string;
+
+  if (intent === "toggle_recaps") {
+    if (!targetId) return { error: "Invalid request." };
+    const target = await db
+      .prepare("SELECT id, can_write_recaps FROM users WHERE id = ?")
+      .bind(targetId)
+      .first();
+    if (!target) return { error: "User not found." };
+    const newVal = target.can_write_recaps ? 0 : 1;
+    await db
+      .prepare("UPDATE users SET can_write_recaps = ?, updated_at = datetime('now') WHERE id = ?")
+      .bind(newVal, targetId)
+      .run();
+    return { success: newVal ? "Recap writer enabled." : "Recap writer disabled." };
+  }
+
   const newRole = form.get("role") as string;
 
   if (!targetId || !["user", "admin"].includes(newRole)) {
@@ -101,6 +121,7 @@ export default function AdminUsersPage({ loaderData, actionData }: Route.Compone
                   <TableCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>Games</TableCell>
                   <TableCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>No-Shows</TableCell>
                   <TableCell align="right">Reliability</TableCell>
+                  <TableCell align="center" sx={{ display: { xs: "none", md: "table-cell" } }}>Recaps</TableCell>
                   {isSuperadminUser && <TableCell>Actions</TableCell>}
                 </TableRow>
               </TableHead>
@@ -151,6 +172,9 @@ export default function AdminUsersPage({ loaderData, actionData }: Route.Compone
                           variant="outlined"
                         />
                       </TableCell>
+                      <TableCell align="center" sx={{ display: { xs: "none", md: "table-cell" } }}>
+                        <RecapToggle userId={u.id as string} enabled={Boolean(u.can_write_recaps)} />
+                      </TableCell>
                       {isSuperadminUser && (
                         <TableCell>
                           {u.role !== "superadmin" && (
@@ -181,5 +205,31 @@ export default function AdminUsersPage({ loaderData, actionData }: Route.Compone
         </CardContent>
       </Card>
     </AppShell>
+  );
+}
+
+function RecapToggle({ userId, enabled }: { userId: string; enabled: boolean }) {
+  const fetcher = useFetcher();
+  const optimistic = fetcher.formData
+    ? fetcher.formData.get("intent") === "toggle_recaps"
+      ? !enabled
+      : enabled
+    : enabled;
+
+  return (
+    <fetcher.Form method="post">
+      <input type="hidden" name="intent" value="toggle_recaps" />
+      <input type="hidden" name="user_id" value={userId} />
+      <Tooltip title={optimistic ? "Recap writer (click to revoke)" : "Grant recap writer"} arrow>
+        <IconButton
+          type="submit"
+          size="small"
+          color={optimistic ? "primary" : "default"}
+          sx={{ opacity: optimistic ? 1 : 0.4 }}
+        >
+          <EditNoteIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </fetcher.Form>
   );
 }

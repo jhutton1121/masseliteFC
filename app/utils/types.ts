@@ -41,6 +41,7 @@ export interface User {
   notify_game_reminder: boolean;
   notify_schedule_change: boolean;
   notify_stats_posted: boolean;
+  can_write_recaps: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +78,8 @@ export interface RSVP {
   user_id: string;
   status: RSVPStatus;
   no_show: boolean;
+  extra_players: number;
+  extra_player_names: string[];
   created_at: string;
   updated_at: string;
 }
@@ -115,6 +118,15 @@ export interface SeasonAward {
   season_id: string;
   user_id: string;
   award: AwardType;
+}
+
+export interface GameWriteup {
+  id: string;
+  game_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PlayerStats {
