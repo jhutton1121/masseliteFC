@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { Link, useFetcher, Form } from "react-router";
 import type { Route } from "./+types/games.$id";
 import { requireUser, requireAdmin } from "~/lib/middleware.server";
-import { isAdmin } from "~/utils/roles";
+import { isAdmin, canWriteRecaps } from "~/utils/roles";
 import {
   enqueueNotification,
   getNotificationRecipients,
@@ -13,6 +14,7 @@ import CardContent from "@mui/material/CardContent";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
+import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Divider from "@mui/material/Divider";
@@ -28,6 +30,7 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import CancelIcon from "@mui/icons-material/Cancel";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import EditIcon from "@mui/icons-material/Edit";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 import { GAME_STATUS_LABELS } from "~/utils/constants";
 
 export function meta() {
@@ -92,14 +95,28 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     .bind(game.date as string)
     .first();
 
+  const writeup = await db
+    .prepare(
+      `SELECT w.*, u.name as author_name
+       FROM game_writeups w
+       JOIN users u ON w.author_id = u.id
+       WHERE w.game_id = ?`
+    )
+    .bind(params.id)
+    .first();
+
   return {
     user,
     game,
     rsvps: rsvps.results,
     myRsvp: myRsvp ? (myRsvp.status as string) : null,
+    myExtraPlayers: myRsvp ? (myRsvp.extra_players as number) || 0 : 0,
+    myExtraPlayerNames: myRsvp ? JSON.parse((myRsvp.extra_player_names as string) || "[]") as string[] : [],
     matches: matches.results,
     teamAssignments: teamAssignments.results,
     season: season ? { id: season.id as string, name: season.name as string } : null,
+    writeup,
+    canWriteRecap: canWriteRecaps(user),
   };
 }
 
@@ -152,9 +169,13 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 }
 
 export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
-  const { user, game, rsvps, myRsvp, matches, teamAssignments, season } = loaderData;
+  const { user, game, rsvps, myRsvp, myExtraPlayers, myExtraPlayerNames, matches, teamAssignments, season, writeup, canWriteRecap } = loaderData;
   const fetcher = useFetcher();
+  const extraFetcher = useFetcher();
   const isAdminUser = isAdmin(user);
+
+  const [extraCount, setExtraCount] = useState(myExtraPlayers);
+  const [extraNames, setExtraNames] = useState<string[]>(myExtraPlayerNames);
 
   const optimisticRsvp =
     fetcher.formData?.get("status")?.toString() || myRsvp;
@@ -162,7 +183,8 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
   const playersOnTime = rsvps.filter((r) => r.status === "in");
   const playersLate = rsvps.filter((r) => r.status === "late");
   const playersOut = rsvps.filter((r) => r.status === "out");
-  const totalIn = playersOnTime.length + playersLate.length;
+  const totalExtras = rsvps.reduce((sum, r) => sum + ((r.extra_players as number) || 0), 0);
+  const totalIn = playersOnTime.length + playersLate.length + totalExtras;
 
   const handleRsvp = (
     _: React.MouseEvent<HTMLElement>,
@@ -277,6 +299,69 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
                     Out
                   </ToggleButton>
                 </ToggleButtonGroup>
+
+                {/* Extra Players */}
+                {(optimisticRsvp === "in" || optimisticRsvp === "late") && (
+                  <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: "divider" }}>
+                    <extraFetcher.Form
+                      method="post"
+                      action={`/games/${game.id}/rsvp`}
+                    >
+                      <input type="hidden" name="intent" value="extra_players" />
+                      <Typography variant="subtitle2" gutterBottom>
+                        Bringing extra players?
+                      </Typography>
+                      <TextField
+                        name="extra_players"
+                        type="number"
+                        size="small"
+                        value={extraCount}
+                        onChange={(e) => {
+                          const val = Math.max(0, Math.min(10, parseInt(e.target.value) || 0));
+                          setExtraCount(val);
+                          // Resize names array
+                          setExtraNames((prev) => {
+                            const next = [...prev];
+                            while (next.length < val) next.push("");
+                            return next.slice(0, val);
+                          });
+                        }}
+                        inputProps={{ min: 0, max: 10 }}
+                        sx={{ width: 80 }}
+                      />
+                      {extraCount > 0 && (
+                        <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+                          {Array.from({ length: extraCount }, (_, i) => (
+                            <TextField
+                              key={i}
+                              name={`extra_name_${i}`}
+                              size="small"
+                              placeholder={`Guest ${i + 1} name (optional)`}
+                              value={extraNames[i] || ""}
+                              onChange={(e) => {
+                                setExtraNames((prev) => {
+                                  const next = [...prev];
+                                  next[i] = e.target.value;
+                                  return next;
+                                });
+                              }}
+                              fullWidth
+                            />
+                          ))}
+                        </Box>
+                      )}
+                      <Button
+                        type="submit"
+                        size="small"
+                        variant="outlined"
+                        sx={{ mt: 1.5 }}
+                        disabled={extraFetcher.state !== "idle"}
+                      >
+                        {extraCount > 0 ? "Save Guests" : "Clear Guests"}
+                      </Button>
+                    </extraFetcher.Form>
+                  </Box>
+                )}
               </Box>
             )}
           </CardContent>
@@ -409,6 +494,52 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
           </Card>
         )}
 
+        {/* Game Recap */}
+        {writeup && (
+          <Card>
+            <CardContent>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <EditNoteIcon color="primary" />
+                  <Typography variant="h6" fontWeight={600}>
+                    Game Recap
+                  </Typography>
+                </Box>
+                {canWriteRecap && (
+                  <Button
+                    component={Link}
+                    to={`/games/${game.id}/writeup`}
+                    size="small"
+                    startIcon={<EditIcon />}
+                  >
+                    Edit
+                  </Button>
+                )}
+              </Box>
+              <Typography
+                variant="body1"
+                sx={{ whiteSpace: "pre-line", lineHeight: 1.7 }}
+              >
+                {writeup.content as string}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: "block" }}>
+                — {writeup.author_name as string}
+              </Typography>
+            </CardContent>
+          </Card>
+        )}
+
+        {!writeup && canWriteRecap && game.status === "completed" && (
+          <Button
+            component={Link}
+            to={`/games/${game.id}/writeup`}
+            variant="outlined"
+            startIcon={<EditNoteIcon />}
+          >
+            Write Game Recap
+          </Button>
+        )}
+
         {/* Admin Actions */}
         {isAdminUser && (
           <Card>
@@ -493,12 +624,20 @@ function RsvpGroup({
   players: Record<string, unknown>[];
   color: string;
 }) {
+  const extraTotal = players.reduce((sum, r) => sum + ((r.extra_players as number) || 0), 0);
+  const displayCount = count + extraTotal;
+
   return (
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
         <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: color }} />
         <Typography variant="subtitle2" color="text.secondary">
-          {label} ({count})
+          {label} ({displayCount})
+          {extraTotal > 0 && (
+            <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 0.5 }}>
+              incl. {extraTotal} guest{extraTotal !== 1 ? "s" : ""}
+            </Typography>
+          )}
         </Typography>
       </Box>
       <AvatarGroup
@@ -514,18 +653,44 @@ function RsvpGroup({
           },
         }}
       >
-        {players.map((r) => (
-          <Tooltip key={r.user_id as string} title={r.user_name as string} arrow>
-            <Avatar sx={{ bgcolor: color }}>
-              {(r.user_name as string)
-                .split(" ")
-                .map((n: string) => n[0])
-                .join("")
-                .toUpperCase()
-                .slice(0, 2)}
-            </Avatar>
-          </Tooltip>
-        ))}
+        {players.flatMap((r) => {
+          const extras = (r.extra_players as number) || 0;
+          const names: string[] = extras > 0
+            ? JSON.parse((r.extra_player_names as string) || "[]")
+            : [];
+          const avatars = [
+            <Tooltip key={r.user_id as string} title={
+              extras > 0
+                ? `${r.user_name as string} (+${extras} guest${extras !== 1 ? "s" : ""})`
+                : (r.user_name as string)
+            } arrow>
+              <Avatar sx={{ bgcolor: color }}>
+                {(r.user_name as string)
+                  .split(" ")
+                  .map((n: string) => n[0])
+                  .join("")
+                  .toUpperCase()
+                  .slice(0, 2)}
+              </Avatar>
+            </Tooltip>,
+          ];
+          for (let i = 0; i < extras; i++) {
+            const guestName = names[i] || `Guest ${i + 1}`;
+            avatars.push(
+              <Tooltip key={`${r.user_id}-guest-${i}`} title={`${guestName} (w/ ${r.user_name})`} arrow>
+                <Avatar sx={{ bgcolor: color, opacity: 0.7, fontSize: 11 }}>
+                  {guestName
+                    .split(" ")
+                    .map((n: string) => n[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </Avatar>
+              </Tooltip>,
+            );
+          }
+          return avatars;
+        })}
       </AvatarGroup>
     </Box>
   );

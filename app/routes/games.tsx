@@ -27,7 +27,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const games = await db
     .prepare(
       `SELECT g.*, f.name as field_name, f.address as field_address,
-              (SELECT COUNT(*) FROM rsvps WHERE game_id = g.id AND status IN ('in', 'late')) as rsvp_count,
+              (SELECT COUNT(*) + COALESCE(SUM(extra_players), 0) FROM rsvps WHERE game_id = g.id AND status IN ('in', 'late')) as rsvp_count,
               (SELECT status FROM rsvps WHERE game_id = g.id AND user_id = ?) as my_rsvp,
               (SELECT s.name FROM seasons s WHERE g.date BETWEEN s.start_date AND s.end_date LIMIT 1) as season_name
        FROM games g
