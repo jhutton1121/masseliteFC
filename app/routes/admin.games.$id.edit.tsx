@@ -66,6 +66,15 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     return { error: "Invalid status." };
   }
 
+  // Get current game state before update to compare max_players
+  const currentGame = await db
+    .prepare("SELECT max_players FROM games WHERE id = ?")
+    .bind(params.id)
+    .first();
+
+  const newMaxPlayers = max_players ? parseInt(max_players) : null;
+  const oldMaxPlayers = currentGame?.max_players as number | null;
+
   await db
     .prepare(
       `UPDATE games
@@ -76,12 +85,98 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       field_id,
       date,
       time,
-      max_players ? parseInt(max_players) : null,
+      newMaxPlayers,
       notes,
       status,
       params.id
     )
     .run();
+
+  // Handle Waitlist logic if max_players changed
+  if (oldMaxPlayers !== newMaxPlayers) {
+    if (newMaxPlayers === null || (oldMaxPlayers !== null && newMaxPlayers > oldMaxPlayers)) {
+      // Capacity increased or removed: Promote waitlisted players
+      const headcountReq = await db
+        .prepare(`SELECT SUM(1 + COALESCE(extra_players, 0)) as total FROM rsvps WHERE game_id = ? AND status IN ('in', 'late')`)
+        .bind(params.id)
+        .first();
+      const currentHeadcount = (headcountReq?.total as number) || 0;
+
+      let availableSlots = newMaxPlayers === null ? Infinity : newMaxPlayers - currentHeadcount;
+
+      if (availableSlots > 0) {
+        const waitlist = await db
+          .prepare(`SELECT user_id, extra_players FROM rsvps WHERE game_id = ? AND status = 'waitlist' ORDER BY created_at ASC`)
+          .bind(params.id)
+          .all();
+
+        for (const w of waitlist.results) {
+          const requiredSlots = 1 + ((w.extra_players as number) || 0);
+          if (availableSlots >= requiredSlots) {
+            await db
+              .prepare(`UPDATE rsvps SET status = 'in', updated_at = datetime('now') WHERE game_id = ? AND user_id = ?`)
+              .bind(params.id, w.user_id)
+              .run();
+
+            availableSlots -= requiredSlots;
+
+            // Notify them
+            const gameDetails = await db
+              .prepare("SELECT g.date, g.time, f.name as field_name FROM games g JOIN fields f ON g.field_id = f.id WHERE g.id = ?")
+              .bind(params.id)
+              .first();
+
+            if (gameDetails) {
+              const recipients = await getNotificationRecipients(db, "waitlist_promoted");
+              const targetRecipient = recipients.find(r => r.userId === w.user_id);
+              if (targetRecipient) {
+                await enqueueNotification(context.cloudflare.env.NOTIFICATION_QUEUE, {
+                  type: "waitlist_promoted",
+                  recipients: [targetRecipient],
+                  payload: {
+                    gameId: params.id as string,
+                    fieldName: gameDetails.field_name as string,
+                    date: gameDetails.date as string,
+                    time: gameDetails.time as string,
+                    appUrl: context.cloudflare.env.APP_URL,
+                  }
+                }).catch(e => console.error("Waitlist notification failed to enqueue", e));
+              }
+            }
+          }
+        }
+      }
+    } else if (newMaxPlayers !== null && (oldMaxPlayers === null || newMaxPlayers < oldMaxPlayers)) {
+      // Capacity decreased: Demote players to waitlist if over capacity
+      // We need to demote the LATEST ones to RSVP first.
+      const headcountReq = await db
+        .prepare(`SELECT SUM(1 + COALESCE(extra_players, 0)) as total FROM rsvps WHERE game_id = ? AND status IN ('in', 'late')`)
+        .bind(params.id)
+        .first();
+      let currentHeadcount = (headcountReq?.total as number) || 0;
+
+      if (currentHeadcount > newMaxPlayers) {
+        // Fetch 'in' or 'late' players ordered by latest RSVP first
+        const attendees = await db
+          .prepare(`SELECT user_id, extra_players FROM rsvps WHERE game_id = ? AND status IN ('in', 'late') ORDER BY created_at DESC`)
+          .bind(params.id)
+          .all();
+
+        for (const a of attendees.results) {
+          if (currentHeadcount <= newMaxPlayers) break;
+
+          const slotsToFree = 1 + ((a.extra_players as number) || 0);
+
+          await db
+            .prepare(`UPDATE rsvps SET status = 'waitlist', updated_at = datetime('now') WHERE game_id = ? AND user_id = ?`)
+            .bind(params.id, a.user_id)
+            .run();
+
+          currentHeadcount -= slotsToFree;
+        }
+      }
+    }
+  }
 
   // Send game_updated notification
   try {

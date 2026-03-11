@@ -3,7 +3,8 @@ export type NotificationType =
   | "game_updated"
   | "game_cancelled"
   | "game_reminder"
-  | "stats_posted";
+  | "stats_posted"
+  | "waitlist_promoted";
 
 export interface NotificationRecipient {
   userId: string;

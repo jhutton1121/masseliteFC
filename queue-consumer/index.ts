@@ -179,6 +179,16 @@ function buildEmailContent(
           ${btn(`${payload.appUrl}/stats`, "View Rankings")}
         `),
       };
+    case "waitlist_promoted":
+      return {
+        subject: `You're In! Spot opened at ${payload.fieldName}`,
+        html: wrap("Waitlist Update: You're In!", "#10B981", `
+          <p>Great news! A spot opened up and you've been promoted from the waitlist for the game at <strong>${payload.fieldName}</strong>.</p>
+          <p><strong>Date:</strong> ${payload.date} at ${payload.time}</p>
+          <p>If you can no longer make it, please update your RSVP so the next person on the waitlist can play.</p>
+          ${btn(`${payload.appUrl}/games/${payload.gameId}`, "View Game")}
+        `),
+      };
     default:
       return {
         subject: `Game update: ${payload.fieldName}`,
@@ -204,6 +214,11 @@ function buildWhatsAppContent(
       return { templateName: "game_reminder", params: [payload.fieldName, payload.date, payload.time, payload.fieldAddress] };
     case "stats_posted":
       return { templateName: "stats_posted", params: [payload.fieldName, payload.date] };
+    case "waitlist_promoted":
+      // Since there isn't a pre-defined Meta template for waitlist, using `game_updated` with specific parameters for now
+      // Or if there is a real template `waitlist_promoted`, then we would use that.
+      // Usually users will have to create it. Let me just use `game_updated` template but with clear waitlist params.
+      return { templateName: "game_updated", params: [payload.fieldName, payload.date, payload.time] };
     default:
       return { templateName: "game_updated", params: [payload.fieldName, payload.date, payload.time] };
   }

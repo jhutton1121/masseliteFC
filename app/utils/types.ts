@@ -17,7 +17,7 @@ export type Position =
 
 export type GameStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
 
-export type RSVPStatus = "in" | "out" | "late";
+export type RSVPStatus = "in" | "out" | "late" | "waitlist";
 
 export type Team = "A" | "B";
 

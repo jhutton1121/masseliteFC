@@ -154,15 +154,17 @@ function GameCard({ game }: { game: Record<string, unknown> }) {
         ? "warning"
         : game.my_rsvp === "out"
           ? "error"
-          : "default";
+          : game.my_rsvp === "waitlist"
+            ? "info"
+            : "default";
 
   return (
     <Card>
       <CardActionArea component={Link} to={`/games/${game.id}`}>
         <CardContent sx={{ p: { xs: 1.5, sm: 2 }, "&:last-child": { pb: { xs: 1.5, sm: 2 } } }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, flexWrap: "wrap" }}>
             <PlaceIcon fontSize="small" color="primary" />
-            <Typography variant="body1" fontWeight={600} noWrap sx={{ flex: 1 }}>
+            <Typography variant="body1" fontWeight={600} noWrap sx={{ flex: 1, minWidth: 100 }}>
               {game.field_name as string}
             </Typography>
             {game.season_name && (
@@ -179,6 +181,14 @@ function GameCard({ game }: { game: Record<string, unknown> }) {
               size="small"
               variant="outlined"
             />
+            {game.max_players && (game.rsvp_count as number) >= (game.max_players as number) && (
+              <Chip
+                label="Waitlist"
+                color="warning"
+                size="small"
+                variant="outlined"
+              />
+            )}
           </Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
             <AccessTimeIcon fontSize="small" sx={{ color: "text.secondary" }} />
@@ -202,7 +212,9 @@ function GameCard({ game }: { game: Record<string, unknown> }) {
                     ? "Going"
                     : game.my_rsvp === "late"
                       ? "Late"
-                      : "Not Going"
+                      : game.my_rsvp === "waitlist"
+                        ? "Waitlisted"
+                        : "Not Going"
                 }
                 color={rsvpColor as any}
                 size="small"

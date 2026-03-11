@@ -22,7 +22,7 @@ export async function getNotificationRecipients(
 ): Promise<NotificationRecipient[]> {
   // Map notification type to the user preference column
   const prefColumn =
-    type === "game_created" || type === "game_updated" || type === "game_cancelled"
+    type === "game_created" || type === "game_updated" || type === "game_cancelled" || type === "waitlist_promoted"
       ? "notify_schedule_change"
       : type === "game_reminder"
         ? "notify_game_reminder"
