@@ -28,6 +28,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import CancelIcon from "@mui/icons-material/Cancel";
+import AccessAlarmIcon from "@mui/icons-material/AccessAlarm";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import EditIcon from "@mui/icons-material/Edit";
 import EditNoteIcon from "@mui/icons-material/EditNote";
@@ -183,8 +184,11 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
   const playersOnTime = rsvps.filter((r) => r.status === "in");
   const playersLate = rsvps.filter((r) => r.status === "late");
   const playersOut = rsvps.filter((r) => r.status === "out");
-  const totalExtras = rsvps.reduce((sum, r) => sum + ((r.extra_players as number) || 0), 0);
+  const playersWaitlisted = rsvps.filter((r) => r.status === "waitlist");
+
+  const totalExtras = rsvps.filter(r => r.status === "in" || r.status === "late").reduce((sum, r) => sum + ((r.extra_players as number) || 0), 0);
   const totalIn = playersOnTime.length + playersLate.length + totalExtras;
+  const isFull = game.max_players ? totalIn >= (game.max_players as number) : false;
 
   const handleRsvp = (
     _: React.MouseEvent<HTMLElement>,
@@ -246,6 +250,13 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
                   }
                   size="small"
                 />
+                {isFull && (
+                  <Chip
+                    label="Waitlist"
+                    color="warning"
+                    size="small"
+                  />
+                )}
               </Box>
             </Box>
 
@@ -286,22 +297,55 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
                     },
                   }}
                 >
-                  <ToggleButton value="in" color="success">
-                    <CheckCircleIcon sx={{ mr: 0.5 }} fontSize="small" />
-                    In
+                  <ToggleButton
+                    value="in"
+                    color="success"
+                    disabled={isFull && optimisticRsvp !== "in"}
+                    sx={{ "&.Mui-disabled": { pointerEvents: "auto" } }}
+                  >
+                    <Tooltip
+                      title={isFull && optimisticRsvp !== "in" ? "Game is full, please join the waitlist instead" : ""}
+                      placement="top"
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                        <CheckCircleIcon sx={{ mr: 0.5 }} fontSize="small" />
+                        In
+                      </Box>
+                    </Tooltip>
                   </ToggleButton>
-                  <ToggleButton value="late" color="warning">
-                    <ScheduleIcon sx={{ mr: 0.5 }} fontSize="small" />
-                    Late
+                  <ToggleButton
+                    value="late"
+                    color="warning"
+                    disabled={isFull && optimisticRsvp !== "in" && optimisticRsvp !== "late"}
+                    sx={{ "&.Mui-disabled": { pointerEvents: "auto" } }}
+                  >
+                    <Tooltip
+                      title={isFull && optimisticRsvp !== "in" && optimisticRsvp !== "late" ? "Game is full, please join the waitlist instead" : ""}
+                      placement="top"
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                        <ScheduleIcon sx={{ mr: 0.5 }} fontSize="small" />
+                        Late
+                      </Box>
+                    </Tooltip>
                   </ToggleButton>
                   <ToggleButton value="out" color="error">
                     <CancelIcon sx={{ mr: 0.5 }} fontSize="small" />
                     Out
                   </ToggleButton>
+                  {(isFull || optimisticRsvp === "waitlist") && optimisticRsvp !== "in" && optimisticRsvp !== "late" && (
+                    <ToggleButton value="waitlist" color="info" sx={{
+                      "&.Mui-selected": { bgcolor: "info.main", color: "white", "&:hover": { bgcolor: "info.dark" } },
+                      "&:not(.Mui-selected)": { order: 99 } // Push to end visually if not selected explicitly
+                    }}>
+                      <AccessAlarmIcon sx={{ mr: 0.5 }} fontSize="small" />
+                      Waitlist
+                    </ToggleButton>
+                  )}
                 </ToggleButtonGroup>
 
                 {/* Extra Players */}
-                {(optimisticRsvp === "in" || optimisticRsvp === "late") && (
+                {(optimisticRsvp === "in" || optimisticRsvp === "late" || optimisticRsvp === "waitlist") && (
                   <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: "divider" }}>
                     <extraFetcher.Form
                       method="post"
@@ -311,24 +355,43 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
                       <Typography variant="subtitle2" gutterBottom>
                         Bringing extra players?
                       </Typography>
-                      <TextField
-                        name="extra_players"
-                        type="number"
-                        size="small"
-                        value={extraCount}
-                        onChange={(e) => {
-                          const val = Math.max(0, Math.min(10, parseInt(e.target.value) || 0));
-                          setExtraCount(val);
-                          // Resize names array
-                          setExtraNames((prev) => {
-                            const next = [...prev];
-                            while (next.length < val) next.push("");
-                            return next.slice(0, val);
-                          });
-                        }}
-                        inputProps={{ min: 0, max: 10 }}
-                        sx={{ width: 80 }}
-                      />
+
+                      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                        <TextField
+                          name="extra_players"
+                          type="number"
+                          size="small"
+                          value={extraCount}
+                          onChange={(e) => {
+                            const maxAllowed = isFull ? myExtraPlayers : 10;
+                            const val = Math.max(0, Math.min(maxAllowed, parseInt(e.target.value) || 0));
+                            setExtraCount(val);
+                            // Resize names array
+                            setExtraNames((prev) => {
+                              const next = [...prev];
+                              while (next.length < val) next.push("");
+                              return next;
+                            });
+                          }}
+                          inputProps={{ min: 0, max: isFull ? myExtraPlayers : 10 }}
+                          sx={{ width: 80 }}
+                        />
+                        <Button
+                          type="submit"
+                          size="small"
+                          variant="outlined"
+                          sx={{ height: 40 }}
+                          disabled={extraFetcher.state !== "idle"}
+                        >
+                          {extraCount > 0 ? "Save Guests" : "Clear Guests"}
+                        </Button>
+                      </Box>
+                      {(extraFetcher.data as any)?.error && (
+                        <Typography color="error" variant="caption" sx={{ mt: 1, display: "block" }}>
+                          {(extraFetcher.data as any).error}
+                        </Typography>
+                      )}
+
                       {extraCount > 0 && (
                         <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
                           {Array.from({ length: extraCount }, (_, i) => (
@@ -350,15 +413,6 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
                           ))}
                         </Box>
                       )}
-                      <Button
-                        type="submit"
-                        size="small"
-                        variant="outlined"
-                        sx={{ mt: 1.5 }}
-                        disabled={extraFetcher.state !== "idle"}
-                      >
-                        {extraCount > 0 ? "Save Guests" : "Clear Guests"}
-                      </Button>
                     </extraFetcher.Form>
                   </Box>
                 )}
@@ -408,6 +462,19 @@ export default function GameDetailPage({ loaderData }: Route.ComponentProps) {
                       count={playersOut.length}
                       players={playersOut}
                       color="text.disabled"
+                    />
+                  </>
+                )}
+
+                {/* Waitlist */}
+                {playersWaitlisted.length > 0 && (
+                  <>
+                    <Divider />
+                    <RsvpGroup
+                      label="Waitlist"
+                      count={playersWaitlisted.length}
+                      players={playersWaitlisted}
+                      color="info.main"
                     />
                   </>
                 )}
